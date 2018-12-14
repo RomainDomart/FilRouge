@@ -4,7 +4,7 @@ from sklearn.pipeline import Pipeline
 
 from sklearn.preprocessing import LabelEncoder,StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
 
@@ -127,10 +127,10 @@ def randomForest(data,composer_list,subsample=True,normalisation=True):
     if normalisation: 
         pipe = Pipeline(steps = [
         ('scale', StandardScaler()),
-        ('rdmf', RandomForestRegressor('rbf'))])
+        ('rdmf', RandomForestClassifier('rbf'))])
     else :
          pipe = Pipeline(steps= [
-        ('rdmf', RandomForestRegressor('rbf'))])
+        ('rdmf', RandomForestClassifier('rbf'))])
             
     # Number of trees in random forest
     n_estimators = [int(x) for x in np.linspace(start = 200, stop = 2000, num = 10)]
@@ -176,10 +176,10 @@ def randomForestRandomizedGrid(data,composer_list,subsample=True,normalisation=T
     if normalisation: 
         pipe = Pipeline(steps = [
         ('scale', StandardScaler()),
-        ('rdmf', RandomForestRegressor('rbf'))])
+        ('rdmf', RandomForestClassifier('rbf'))])
     else :
          pipe = Pipeline(steps= [
-        ('rdmf', RandomForestRegressor('rbf'))])
+        ('rdmf', RandomForestClassifier('rbf'))])
             
     # Number of trees in random forest
     n_estimators = [int(x) for x in np.linspace(start = 200, stop = 2000, num = 10)]
@@ -213,24 +213,23 @@ def randomForestRandomizedGrid(data,composer_list,subsample=True,normalisation=T
 
     n_estimators = [int(x) for x in np.linspace(randomParameters.get('rdmf__n_estimators')*0.9, randomParameters.get('rdmf__n_estimators')*1.1,num= 5)]
     max_depth = np.linspace(randomParameters.get('rdmf__max_depth')*0.9, randomParameters.get('rdmf__max_depth')*1.1, num = 5)
-    min_samples_leaf = [int(x) for x in np.linspace(randomParameters.get('rdmf__min_samples_leaf')-1, randomParameters.get('rdmf__min_samples_leaf')+1, num = 3)]
-
+    
+    min_samples_leaf = randomParameters.get('rdmf__min_samples_leaf')
     min_samples_split =  randomParameters.get('rdmf__min_samples_split')
     bootstrap = randomParameters.get("rdmf__bootstrap")
     max_features = randomParameters.get('rdmf__max_features')
     
     
     hyperparameters = {'rdmf__n_estimators': n_estimators,
-                   'rdmf__max_depth': max_depth,
-                   'rdmf__min_samples_leaf': min_samples_leaf}
+                   'rdmf__max_depth': max_depth}
     
     if normalisation: 
         pipe = Pipeline(steps = [
         ('scale', StandardScaler()),
-        ('rdmf', RandomForestRegressor('rbf',bootstrap=bootstrap,min_samples_split=min_samples_split,max_features=max_features))])
+        ('rdmf', RandomForestClassifier('rbf',min_samples_leaf=min_samples_leaf,bootstrap=bootstrap,min_samples_split=min_samples_split,max_features=max_features))])
     else :
          pipe = Pipeline(steps= [
-        ('rdmf', RandomForestRegressor('rbf',bootstrap=bootstrap,min_samples_split=min_samples_split,max_features=max_features))])
+        ('rdmf', RandomForestClassifier('rbf',min_samples_leaf=min_samples_leaf,bootstrap=bootstrap,min_samples_split=min_samples_split,max_features=max_features))])
     
     gcRdmF = GridSearchCV(estimator=pipe, param_grid=hyperparameters,n_jobs=-1)
     gcRdmF.fit(X_train,y_train)
@@ -261,6 +260,21 @@ def modelPerformance(model,n,composer_list,subsample=False):
     
     return(meanAccuracy,confidenceIntervalAccuracy,confusionMatrix)
 
+def modelCombination(models,data,composer_list,subsample=False):
+    if subsample : 
+        X_train,X_test,y_train,y_test = splitDataset(subsampling(data,composer_list))
+    else :
+        X_train,X_test,y_train,y_test = splitDataset(data[data["composer"].isin(composer_list)])
+        
+    predictions = pd.DataFrame(columns = ["Model0","Model1","Model2"], index = y_test.index)
+    for k,model in enumerate(models):
+        name = "Model"+str(k)
+        model.fit(X_train, y_train)
+        predictionsModel = np.round(model.predict(X_test))
+        predictions[name] = predictionsModel
+    accuracy_score(predictions.mode(axis=1)[0], y_test)
+    return predictions, acc
+
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -283,10 +297,10 @@ with warnings.catch_warnings():
     composersList.remove(le.transform(['schumann']))
 
     log,acc1 = logisticRegression(data, composersList, subsample=False, normalisation=True)
-    #svm,acc2 = svmRBF(data,composersList,subsample=False,normalisation=True)
-    #rdmf,acc3 = randomForest(data,composersList,subsample=False,normalisation=True)
+    svm,acc2 = svmRBF(data,composersList,subsample=False,normalisation=True)
+    rdmf,acc3 = randomForest(data,composersList,subsample=False,normalisation=True)
 
 
     accLog,perfLog,confusionMatrixLog = modelPerformance(log,20,composersList,subsample=False)
-    #perfSVM = modelPerformance(svm,20,composersList,subsample=False)
-    #perfRDMF = modelPerformance(rdmf,20,composersList,subsample=False)
+    perfSVM = modelPerformance(svm,20,composersList,subsample=False)
+    perfRDMF = modelPerformance(rdmf,20,composersList,subsample=False)
